@@ -239,6 +239,10 @@ static void test1_func(abts_case *tc, void *data)
     }
 
     for (i = 0; i < NUM_OF_TEST_UE; i++) {
+        /* Send PDU session establishment request */
+        sess = test_sess_find_by_psi(test_ue[i], 5);
+        ogs_assert(sess);
+
         /* Send PDU Session release request */
         sess->ul_nas_transport_param.request_type = 0;
         sess->ul_nas_transport_param.dnn = 0;
@@ -263,6 +267,9 @@ static void test1_func(abts_case *tc, void *data)
         recvbuf = testgnb_ngap_read(ngap);
         ABTS_PTR_NOTNULL(tc, recvbuf);
         testngap_recv(test_ue[i], recvbuf);
+        ABTS_INT_EQUAL(tc,
+                NGAP_ProcedureCode_id_PDUSessionResourceRelease,
+                test_ue[i]->ngap_procedure_code);
 
         /* Send PDUSessionResourceReleaseResponse */
         sendbuf = testngap_build_pdu_session_resource_release_response(sess);
@@ -291,6 +298,7 @@ static void test1_func(abts_case *tc, void *data)
         ABTS_INT_EQUAL(tc, OGS_OK, rv);
     }
 
+#if 0
     for (i = 0; i < NUM_OF_TEST_UE; i++) {
         /* Send De-registration request */
         gmmbuf = testgmm_build_de_registration_request(test_ue[i], 1, true, true);
@@ -314,6 +322,7 @@ static void test1_func(abts_case *tc, void *data)
         rv = testgnb_ngap_send(ngap, sendbuf);
         ABTS_INT_EQUAL(tc, OGS_OK, rv);
     }
+#endif
 
     ogs_msleep(300);
 
