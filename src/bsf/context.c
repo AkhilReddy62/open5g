@@ -23,13 +23,9 @@ static bsf_context_t self;
 
 int __bsf_log_domain;
 
-static OGS_POOL(bsf_ue_pool, bsf_ue_t);
 static OGS_POOL(bsf_sess_pool, bsf_sess_t);
 
 static int context_initialized = 0;
-
-static void clear_ipv4addr(bsf_sess_t *sess);
-static void clear_ipv6prefix(bsf_sess_t *sess);
 
 void bsf_context_init(void)
 {
@@ -40,7 +36,6 @@ void bsf_context_init(void)
 
     ogs_log_install_domain(&__bsf_log_domain, "bsf", ogs_core()->log.level);
 
-    ogs_pool_init(&bsf_ue_pool, ogs_app()->max.ue);
     ogs_pool_init(&bsf_sess_pool, ogs_app()->pool.sess);
 
     self.ipv4addr_hash = ogs_hash_make();
@@ -55,7 +50,6 @@ void bsf_context_final(void)
 {
     ogs_assert(context_initialized == 1);
 
-    bsf_ue_remove_all();
     bsf_sess_remove_all();
 
     ogs_assert(self.ipv4addr_hash);
@@ -63,7 +57,6 @@ void bsf_context_final(void)
     ogs_assert(self.ipv6prefix_hash);
     ogs_hash_destroy(self.ipv6prefix_hash);
 
-    ogs_pool_final(&bsf_ue_pool);
     ogs_pool_final(&bsf_sess_pool);
 
     context_initialized = 0;
@@ -124,129 +117,6 @@ int bsf_context_parse_config(void)
     return OGS_OK;
 }
 
-bool bsf_ue_set_ipv4addr(bsf_ue_t *bsf_ue, char *ipv4addr_string)
-{
-    int rv;
-
-    ogs_assert(bsf_ue);
-    ogs_assert(ipv4addr_string);
-
-    if (bsf_ue->ipv4addr_string) {
-        ogs_hash_set(self.ipv4addr_hash,
-                &bsf_ue->ipv4addr, sizeof(bsf_ue->ipv4addr), NULL);
-        ogs_free(bsf_ue->ipv4addr_string);
-    }
-    bsf_ue->ipv4addr_string = ogs_strdup(ipv4addr_string);
-    ogs_expect_or_return_val(bsf_ue->ipv4addr_string, false);
-
-    rv = ogs_ipv4_from_string(&bsf_ue->ipv4addr, ipv4addr_string);
-    ogs_expect_or_return_val(rv == OGS_OK, false);
-
-    ogs_hash_set(self.ipv4addr_hash,
-            &bsf_ue->ipv4addr, sizeof(bsf_ue->ipv4addr), bsf_ue);
-
-    return true;
-}
-
-bool bsf_ue_set_ipv6prefix(bsf_ue_t *bsf_ue, char *ipv6prefix_string)
-{
-    int rv;
-
-    ogs_assert(bsf_ue);
-    ogs_assert(ipv6prefix_string);
-
-    if (bsf_ue->ipv6prefix_string) {
-        ogs_hash_set(self.ipv6prefix_hash,
-                &bsf_ue->ipv6prefix, (bsf_ue->ipv6prefix.len >> 3) + 1, NULL);
-        ogs_free(bsf_ue->ipv6prefix_string);
-    }
-    bsf_ue->ipv6prefix_string = ogs_strdup(ipv6prefix_string);
-    ogs_expect_or_return_val(bsf_ue->ipv6prefix_string, false);
-
-    rv = ogs_ipv6prefix_from_string(
-            bsf_ue->ipv6prefix.addr6, &bsf_ue->ipv6prefix.len,
-            ipv6prefix_string);
-    ogs_expect_or_return_val(rv == OGS_OK, false);
-
-    ogs_assert(bsf_ue->ipv6prefix.len == OGS_IPV6_128_PREFIX_LEN);
-
-    ogs_hash_set(self.ipv6prefix_hash,
-            &bsf_ue->ipv6prefix, (bsf_ue->ipv6prefix.len >> 3) + 1, bsf_ue);
-
-    return true;
-}
-
-bsf_ue_t *bsf_ue_add_by_ip_address(
-        char *ipv4addr_string, char *ipv6prefix_string)
-{
-    bsf_ue_t *bsf_ue = NULL;
-
-    ogs_assert(ipv4addr_string || ipv6prefix_string);
-
-    ogs_pool_alloc(&bsf_ue_pool, &bsf_ue);
-    if (!bsf_ue) {
-        ogs_error("Maximum number of bsf_ue[%lld] reached",
-                    (long long)ogs_app()->max.ue);
-        return NULL;
-    }
-    memset(bsf_ue, 0, sizeof *bsf_ue);
-
-    if (ipv4addr_string &&
-        bsf_ue_set_ipv4addr(bsf_ue, ipv4addr_string) == false) {
-        ogs_error("bsf_ue_set_ipv4addr[%s] failed", ipv4addr_string);
-        ogs_pool_free(&bsf_ue_pool, bsf_ue);
-        return NULL;
-    }
-
-    if (ipv6prefix_string &&
-        bsf_ue_set_ipv6prefix(bsf_ue, ipv6prefix_string) == false) {
-        ogs_error("bsf_ue_set_ipv6prefix[%s] failed", ipv6prefix_string);
-        ogs_pool_free(&bsf_ue_pool, bsf_ue);
-        return NULL;
-    }
-
-    ogs_list_init(&bsf_ue->sess_list);
-
-    ogs_list_add(&self.bsf_ue_list, bsf_ue);
-
-    return bsf_ue;
-}
-
-void bsf_ue_remove(bsf_ue_t *bsf_ue)
-{
-    ogs_assert(bsf_ue);
-
-    ogs_list_remove(&self.bsf_ue_list, bsf_ue);
-
-    bsf_sess_remove_all2(bsf_ue);
-
-    if (bsf_ue->ipv4addr_string) {
-        ogs_hash_set(self.ipv4addr_hash,
-                &bsf_ue->ipv4addr, sizeof(bsf_ue->ipv4addr), NULL);
-        ogs_free(bsf_ue->ipv4addr_string);
-    }
-    if (bsf_ue->ipv6prefix_string) {
-        ogs_hash_set(self.ipv6prefix_hash,
-                &bsf_ue->ipv6prefix, (bsf_ue->ipv6prefix.len >> 3) + 1, NULL);
-        ogs_free(bsf_ue->ipv6prefix_string);
-    }
-
-    if (bsf_ue->supi)
-        ogs_free(bsf_ue->supi);
-    if (bsf_ue->gpsi)
-        ogs_free(bsf_ue->gpsi);
-
-    ogs_pool_free(&bsf_ue_pool, bsf_ue);
-}
-
-void bsf_ue_remove_all(void)
-{
-    bsf_ue_t *bsf_ue = NULL, *next = NULL;;
-
-    ogs_list_for_each_safe(&self.bsf_ue_list, next, bsf_ue)
-        bsf_ue_remove(bsf_ue);
-}
-
 bsf_sess_t *bsf_sess_add_by_snssai_and_dnn(ogs_s_nssai_t *s_nssai, char *dnn)
 {
     bsf_sess_t *sess = NULL;
@@ -301,8 +171,16 @@ void bsf_sess_remove(bsf_sess_t *sess)
     if (sess->gpsi)
         ogs_free(sess->gpsi);
 
-    clear_ipv4addr(sess);
-    clear_ipv6prefix(sess);
+    if (sess->ipv4addr_string) {
+        ogs_hash_set(self.ipv4addr_hash,
+                &sess->ipv4addr, sizeof(sess->ipv4addr), NULL);
+        ogs_free(sess->ipv4addr_string);
+    }
+    if (sess->ipv6prefix_string) {
+        ogs_hash_set(self.ipv6prefix_hash,
+                &sess->ipv6prefix, (sess->ipv6prefix.len >> 3) + 1, NULL);
+        ogs_free(sess->ipv6prefix_string);
+    }
 
     ogs_assert(sess->dnn);
     ogs_free(sess->dnn);
@@ -321,44 +199,12 @@ void bsf_sess_remove(bsf_sess_t *sess)
     ogs_pool_free(&bsf_sess_pool, sess);
 }
 
-void bsf_sess_remove_all2(bsf_ue_t *bsf_ue)
-{
-    bsf_sess_t *sess = NULL, *next_sess = NULL;
-
-    ogs_assert(bsf_ue);
-
-    ogs_list_for_each_safe(&bsf_ue->sess_list, next_sess, sess)
-        bsf_sess_remove(sess);
-}
-
 void bsf_sess_remove_all(void)
 {
     bsf_sess_t *sess = NULL, *next_sess = NULL;
 
     ogs_list_for_each_safe(&self.sess_list, next_sess, sess)
         bsf_sess_remove(sess);
-}
-
-static void clear_ipv4addr(bsf_sess_t *sess)
-{
-    ogs_assert(sess);
-
-    if (sess->ipv4addr_string) {
-        ogs_hash_set(self.ipv4addr_hash,
-                &sess->ipv4addr, sizeof(sess->ipv4addr), NULL);
-        ogs_free(sess->ipv4addr_string);
-    }
-}
-
-static void clear_ipv6prefix(bsf_sess_t *sess)
-{
-    ogs_assert(sess);
-
-    if (sess->ipv6prefix_string) {
-        ogs_hash_set(self.ipv6prefix_hash,
-                &sess->ipv6prefix, (sess->ipv6prefix.len >> 3) + 1, NULL);
-        ogs_free(sess->ipv6prefix_string);
-    }
 }
 
 bool bsf_sess_set_ipv4addr(bsf_sess_t *sess, char *ipv4addr_string)
@@ -368,8 +214,11 @@ bool bsf_sess_set_ipv4addr(bsf_sess_t *sess, char *ipv4addr_string)
     ogs_assert(sess);
     ogs_assert(ipv4addr_string);
 
-    clear_ipv4addr(sess);
-
+    if (sess->ipv4addr_string) {
+        ogs_hash_set(self.ipv4addr_hash,
+                &sess->ipv4addr, sizeof(sess->ipv4addr), NULL);
+        ogs_free(sess->ipv4addr_string);
+    }
     rv = ogs_ipv4_from_string(&sess->ipv4addr, ipv4addr_string);
     ogs_expect_or_return_val(rv == OGS_OK, false);
 
@@ -389,8 +238,11 @@ bool bsf_sess_set_ipv6prefix(bsf_sess_t *sess, char *ipv6prefix_string)
     ogs_assert(sess);
     ogs_assert(ipv6prefix_string);
 
-    clear_ipv6prefix(sess);
-
+    if (sess->ipv6prefix_string) {
+        ogs_hash_set(self.ipv6prefix_hash,
+                &sess->ipv6prefix, (sess->ipv6prefix.len >> 3) + 1, NULL);
+        ogs_free(sess->ipv6prefix_string);
+    }
     rv = ogs_ipv6prefix_from_string(
             sess->ipv6prefix.addr6, &sess->ipv6prefix.len, ipv6prefix_string);
     ogs_expect_or_return_val(rv == OGS_OK, false);

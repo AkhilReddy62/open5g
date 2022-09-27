@@ -38,41 +38,8 @@ typedef struct bsf_context_s {
     ogs_hash_t          *ipv4addr_hash;
     ogs_hash_t          *ipv6prefix_hash;
 
-#define BSF_UE_IS_LAST_SESSION(__bSF) \
-     ((__bSF) && (ogs_list_count(&(__bSF)->sess_list)) == 1)
-    ogs_list_t          bsf_ue_list;
     ogs_list_t          sess_list;
 } bsf_context_t;
-
-typedef struct bsf_ue_s {
-    ogs_lnode_t lnode;
-
-    char *supi;
-    char *gpsi;
-
-    char *ipv4addr_string;
-    char *ipv6prefix_string;
-
-    uint32_t ipv4addr;
-    struct {
-        uint8_t len;
-        uint8_t addr6[OGS_IPV6_LEN];
-    } ipv6prefix;
-
-    ogs_list_t sess_list;
-} bsf_ue_t;
-
-#define BSF_SESS_CLEAR(__sESS) \
-    do { \
-        bsf_ue_t *bsf_ue = NULL; \
-        ogs_assert(__sESS); \
-        bsf_ue = __sESS->bsf_ue; \
-        ogs_assert(bsf_ue); \
-        if (BSF_UE_IS_LAST_SESSION(bsf_ue)) \
-            bsf_ue_remove(bsf_ue); \
-        else \
-            bsf_sess_remove(__sESS); \
-    } while(0)
 
 typedef struct bsf_sess_s {
     ogs_sbi_object_t sbi;
@@ -115,20 +82,9 @@ bsf_context_t *bsf_self(void);
 
 int bsf_context_parse_config(void);
 
-bool bsf_ue_set_ipv4addr(bsf_ue_t *bsf_ue, char *ipv4addr_string);
-bool bsf_ue_set_ipv6prefix(bsf_ue_t *bsf_ue, char *ipv6prefix_string);
-
-bsf_ue_t *bsf_ue_add_by_ip_address(
-        char *ipv4addr_string, char *ipv6prefix_string);
-void bsf_ue_remove(bsf_ue_t *bsf_ue);
-void bsf_ue_remove_all(void);
-bsf_ue_t *bsf_ue_find_by_ipv4addr(char *ipv4addr_string);
-bsf_ue_t *bsf_ue_find_by_ipv6prefix(char *ipv6prefix_string);
-
 bsf_sess_t *bsf_sess_add_by_snssai_and_dnn(ogs_s_nssai_t *s_nssai, char *dnn);
 void bsf_sess_remove(bsf_sess_t *sess);
 void bsf_sess_remove_all(void);
-void bsf_sess_remove_all2(bsf_ue_t *bsf_ue);
 
 bool bsf_sess_set_ipv4addr(bsf_sess_t *sess, char *ipv4addr);
 bool bsf_sess_set_ipv6prefix(bsf_sess_t *sess, char *ipv6prefix);
