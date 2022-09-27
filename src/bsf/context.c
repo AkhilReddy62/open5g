@@ -117,13 +117,12 @@ int bsf_context_parse_config(void)
     return OGS_OK;
 }
 
-bsf_sess_t *bsf_sess_add_by_snssai_and_dnn(ogs_s_nssai_t *s_nssai, char *dnn)
+bsf_sess_t *bsf_sess_add_by_ip_address(
+            char *ipv4addr_string, char *ipv6prefix_string)
 {
     bsf_sess_t *sess = NULL;
 
-    ogs_assert(s_nssai);
-    ogs_assert(s_nssai->sst);
-    ogs_assert(dnn);
+    ogs_assert(ipv4addr_string || ipv6prefix_string);
 
     ogs_pool_alloc(&bsf_sess_pool, &sess);
     if (!sess) {
@@ -133,15 +132,22 @@ bsf_sess_t *bsf_sess_add_by_snssai_and_dnn(ogs_s_nssai_t *s_nssai, char *dnn)
     }
     memset(sess, 0, sizeof *sess);
 
+    if (ipv4addr_string &&
+        bsf_sess_set_ipv4addr(sess, ipv4addr_string) == false) {
+        ogs_error("bsf_sess_set_ipv4addr[%s] failed", ipv4addr_string);
+        ogs_pool_free(&bsf_sess_pool, sess);
+        return NULL;
+    }
+    if (ipv6prefix_string &&
+        bsf_sess_set_ipv6prefix(sess, ipv6prefix_string) == false) {
+        ogs_error("bsf_sess_set_ipv6prefix[%s] failed", ipv4addr_string);
+        ogs_pool_free(&bsf_sess_pool, sess);
+        return NULL;
+    }
+
     /* SBI Features */
     OGS_SBI_FEATURES_SET(sess->management_features,
             OGS_SBI_NBSF_MANAGEMENT_BINDING_UPDATE);
-
-    sess->s_nssai.sst = s_nssai->sst;
-    sess->s_nssai.sd.v = s_nssai->sd.v;
-
-    sess->dnn = ogs_strdup(dnn);
-    ogs_assert(sess->dnn);
 
     sess->binding_id = ogs_msprintf("%d",
             (int)ogs_pool_index(&bsf_sess_pool, sess));
