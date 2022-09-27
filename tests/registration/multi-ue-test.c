@@ -19,7 +19,7 @@
 
 #include "test-common.h"
 
-#define NUM_OF_TEST_UE 1
+#define NUM_OF_TEST_UE 3
 
 static void test1_func(abts_case *tc, void *data)
 {
@@ -298,7 +298,6 @@ static void test1_func(abts_case *tc, void *data)
         ABTS_INT_EQUAL(tc, OGS_OK, rv);
     }
 
-#if 0
     for (i = 0; i < NUM_OF_TEST_UE; i++) {
         /* Send De-registration request */
         gmmbuf = testgmm_build_de_registration_request(test_ue[i], 1, true, true);
@@ -322,7 +321,6 @@ static void test1_func(abts_case *tc, void *data)
         rv = testgnb_ngap_send(ngap, sendbuf);
         ABTS_INT_EQUAL(tc, OGS_OK, rv);
     }
-#endif
 
     ogs_msleep(300);
 
